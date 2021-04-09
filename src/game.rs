@@ -626,6 +626,8 @@ mod tests {
             ],
         };
         input.check().expect("Failed to validate board.");
+        println!("input: {:#?}", input);
+
         // Run the solver.
         input.solve().expect("error finding solution");
 
