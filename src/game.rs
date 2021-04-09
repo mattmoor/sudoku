@@ -571,8 +571,6 @@ mod tests {
             ],
         };
         input.check().expect("Failed to validate board.");
-        // Run the solver.
-        input.solve().expect("error finding solution");
 
         let solution = Board {
             cells: [
@@ -588,6 +586,17 @@ mod tests {
             ],
         };
         solution.check().expect("Failed to validate board.");
+
+        // Run the solver a single iteration
+        input.solve_one().expect("error finding solution");
+        // These test the paths thru assert_board:
+        assert_board(input, input);
+        assert_board(input, solution);
+        assert_board(solution, input);
+
+        // Run the solver to completion.
+        input.check().expect("Failed to validate board.");
+        input.solve().expect("error finding solution");
 
         assert_board(input, solution);
         assert_eq!(input, solution);
