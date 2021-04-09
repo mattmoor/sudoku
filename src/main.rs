@@ -4,7 +4,7 @@ const ANY: game::Cell = game::Cell::Options(game::ALL);
 
 fn main() {
     let v = game::Cell::Value;
-    
+
     let mut input = game::Board {
         cells: [
             [ANY, ANY, v(5), v(3), ANY, ANY, ANY, ANY, ANY],
