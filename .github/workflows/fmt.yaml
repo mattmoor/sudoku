@@ -7,7 +7,7 @@ on:
 jobs:
 
   cargo-fmt:
-    name: Auto-format and Check
+    name: cargo fmt
     runs-on: ubuntu-latest
 
     steps:
@@ -39,3 +39,21 @@ jobs:
               exit 1
           fi
           echo "${{ github.repository }} is formatted correctly."
+
+
+  cargo-clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
