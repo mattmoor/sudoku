@@ -1,0 +1,41 @@
+name: Code Style
+
+on:
+  pull_request:
+    branches: [ 'main', 'release-*' ]
+
+jobs:
+
+  cargo-fmt:
+    name: Auto-format and Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      # auto-format and then we turn diffs into annotations.
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+
+      - name: Verify ${{ matrix.tool }}
+        shell: bash
+        run: |
+          # From: https://backreference.org/2009/12/23/how-to-match-newlines-in-sed/
+          # This is to leverage this workaround:
+          # https://github.com/actions/toolkit/issues/193#issuecomment-605394935
+          function urlencode() {
+            sed ':begin;$!N;s/\n/%0A/;tbegin'
+          }
+          if [[ $(git diff-index --name-only HEAD --) ]]; then
+              for x in $(git diff-index --name-only HEAD --); do
+                echo "::error file=$x::Please run cargo fmt.%0A$(git diff $x | urlencode)"
+              done
+              echo "${{ github.repository }} is out of style. Please run cargo fmt."
+              exit 1
+          fi
+          echo "${{ github.repository }} is formatted correctly."
