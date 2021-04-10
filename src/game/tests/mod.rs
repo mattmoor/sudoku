@@ -49,6 +49,70 @@ fn check_bad_board() {
     }
 }
 
+const GOOD_BOARD_ZEROS: &str = "\
+005300000
+800000020
+070010500
+400005300
+010070006
+003200080
+060500009
+004000030
+000009700";
+
+// We use a zero because the "\ seems to trim leading whitespace.
+const GOOD_BOARD_SPACES: &str = "\
+0 53     
+8      2 
+ 7  1 5  
+4    53  
+ 1  7   6
+  32   8 
+ 6 5    9
+  4    3 
+     97  ";
+
+const BAD_BOARD_CHAR: &str = "\
+00a300000
+800000020
+070010500
+400005300
+010070006
+003200080
+060500009
+004000030
+000009700";
+
+const BAD_BOARD_TOO_FEW_ROWS: &str = "\
+005300000
+001200000";
+
+const BAD_BOARD_ROW_TOO_SHORT: &str = "\
+005300
+800000020
+070010500
+400005300
+010070006
+003200080
+060500009
+004000030
+000009700";
+
+#[test]
+fn check_parse() {
+    Board::parse(GOOD_BOARD_ZEROS.to_string()).expect("good board zeros");
+    Board::parse(GOOD_BOARD_SPACES.to_string()).expect("good board spaces");
+    if let Ok(b) = Board::parse(BAD_BOARD_CHAR.to_string()) {
+        panic!("wanted error due to bad char: 'a', got: {:#?}", b)
+    }
+    if let Ok(b) = Board::parse(BAD_BOARD_TOO_FEW_ROWS.to_string()) {
+        panic!("wanted error due to too few rows, got: {:#?}", b)
+    }
+    if let Ok(b) = Board::parse(BAD_BOARD_ROW_TOO_SHORT.to_string()) {
+        panic!("wanted error due to too few rows, got: {:#?}", b)
+    }
+}
+
 #[test]
 fn check_equality() {
     // Programatically define a board with the diagonal
