@@ -1,36 +1,26 @@
+mod bitset;
+
 use std::fmt;
 use std::result::Result;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum Cell {
-    Value(u8),    // Holds the actual value.
-    Options(u16), // Holds a bit-mask of availabile options
+    Value(usize),            // Holds the actual value.
+    Options(bitset::BitSet), // Holds a bit-mask of availabile options
 }
 
 impl fmt::Debug for Cell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Cell::Value(v) => return f.write_fmt(format_args!("\t{}", v)),
-            Cell::Options(opts) => {
-                f.write_str("\t{")?;
-                let mut comma = "";
-                for idx in 0..9 {
-                    if (1 << idx) & opts != 0 {
-                        f.write_fmt(format_args!("{}{}", comma, idx + 1))?;
-                        comma = ",";
-                    }
-                }
-                f.write_str("}")
-            }
+            Cell::Options(opts) => return f.write_fmt(format_args!("\t{:?}", opts)),
         }
     }
 }
 
-pub const ALL: u16 = (1 << 9) - 1;
-
 #[derive(Copy, Clone, PartialEq)]
 pub struct Board {
-    pub cells: [[Cell; 9]; 9],
+    cells: [[Cell; 9]; 9],
 }
 impl fmt::Debug for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -152,18 +142,17 @@ mod views {
         Ok(())
     }
 
-    pub fn mask(it: impl Iterator<Item = super::Cell>) -> u16 {
-        let mut mask = super::ALL;
+    pub fn mask(it: impl Iterator<Item = super::Cell>) -> super::bitset::BitSet {
+        let mut mask = super::bitset::BitSet::new(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
         for elt in it {
             if let super::Cell::Value(v) = elt {
-                mask ^= 1 << (v - 1);
+                mask = mask.unset(v as usize);
             }
         }
         mask
     }
 
-    pub fn frequency(it: impl Iterator<Item = super::Cell>, value: u8) -> u8 {
-        let mask = 1 << (value - 1);
+    pub fn frequency(it: impl Iterator<Item = super::Cell>, value: usize) -> usize {
         let mut freq = 0;
 
         for elt in it {
@@ -175,7 +164,7 @@ mod views {
                     }
                 }
                 super::Cell::Options(opts) => {
-                    if mask & opts != 0 {
+                    if opts.has(value as usize) {
                         freq += 1;
                     }
                 }
@@ -186,6 +175,28 @@ mod views {
 }
 
 impl Board {
+    pub fn new(values: [[usize; 9]; 9]) -> Result<Board, String> {
+        let all = bitset::BitSet::new(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let mut board = Board {
+            cells: [[Cell::Options(all); 9]; 9],
+        };
+
+        for i in 0..9 {
+            for j in 0..9 {
+                let c = values[i][j];
+                if c > 9 {
+                    panic!("Invalid value ({}, {}) = {}", i, j, c);
+                }
+                if c == 0 {
+                    continue; // 0 is used for unspecified, so leave "all" options.
+                }
+                board.set(i, j, Cell::Value(c))?;
+            }
+        }
+
+        Ok(board)
+    }
+
     fn set(&mut self, row: usize, col: usize, value: Cell) -> Result<(), String> {
         self.cells[row][col] = value;
         self.check()
@@ -227,23 +238,23 @@ impl Board {
         let mut options = 0;
         let mut changed = false;
 
-        // First we check whether any square's available options consist of a single value.
+        // First we check whether 0 square's available options consist of a single value.
         for ridx in 0..9 {
             for cidx in 0..9 {
                 if let Cell::Options(og_opts) = self.cells[ridx][cidx] {
                     let opts = og_opts
-                        & views::mask(self.row(ridx))
-                        & views::mask(self.col(cidx))
-                        & views::mask(self.subsquare(ridx / 3, cidx / 3));
-                    if opts == 0 {
+                        .intersect(views::mask(self.row(ridx)))
+                        .intersect(views::mask(self.col(cidx)))
+                        .intersect(views::mask(self.subsquare(ridx / 3, cidx / 3)));
+                    if opts.empty() {
                         // If there are no options, then something went wrong.
                         return Err(format!(
                             "There are no remaining options for {}, {}",
                             ridx, cidx
                         ));
-                    } else if opts & (opts - 1) == 0 {
+                    } else if let Some(value) = opts.singleton() {
                         // If it's a power of two, then there's only one option.
-                        self.set(ridx, cidx, Cell::Value((opts.trailing_zeros() + 1) as u8))?;
+                        self.set(ridx, cidx, Cell::Value(value))?;
                         changed = true;
                     } else {
                         self.set(ridx, cidx, Cell::Options(opts))?;
@@ -257,25 +268,21 @@ impl Board {
         }
         self.check()?;
 
-        // Second we check whether any square is the only square in a range that could hold a given value.
+        // Second we check whether 0 square is the only square in a range that could hold a given value.
         for ridx in 0..9 {
             for cidx in 0..9 {
                 if let Cell::Options(opts) = self.cells[ridx][cidx] {
-                    let mut value = 1;
-                    let mut shifter = opts;
-                    while shifter != 0 {
-                        if (shifter & 1 != 0)
-                            && (views::frequency(self.row(ridx), value) == 1
-                                || views::frequency(self.col(cidx), value) == 1
-                                || views::frequency(self.subsquare(ridx / 3, cidx / 3), value) == 1)
+                    for v in opts.foreach() {
+                        let value = v;
+                        if views::frequency(self.row(ridx), value) == 1
+                            || views::frequency(self.col(cidx), value) == 1
+                            || views::frequency(self.subsquare(ridx / 3, cidx / 3), value) == 1
                         {
                             self.set(ridx, cidx, Cell::Value(value))?;
                             changed = true;
                             options -= 1; // We counted this cell above, but it's now concrete so remove it.
                             break;
                         }
-                        value += 1;
-                        shifter >>= 1;
                     }
                 }
             }
@@ -307,31 +314,25 @@ impl Board {
                     for ridx in 0..9 {
                         for cidx in 0..9 {
                             if let Cell::Options(opts) = self.cells[ridx][cidx] {
-                                if opts.count_ones() <= count {
+                                if opts.count() <= count {
                                     candidate_rdx = ridx;
                                     candidate_cdx = cidx;
-                                    count = opts.count_ones();
+                                    count = opts.count();
                                 }
                             }
                         }
                     }
                     if let Cell::Options(opts) = self.cells[candidate_rdx][candidate_cdx] {
-                        let mut value = 1;
-                        let mut shifter = opts;
-
-                        while shifter != 0 {
-                            if shifter & 1 != 0 {
-                                // Create a copy of the board with which we will speculate the value of this cell.
-                                let mut speculator = *self;
-                                speculator.set(candidate_rdx, candidate_cdx, Cell::Value(value))?;
-                                // Try to recursively solve the board.
-                                if speculator.solve().is_ok() {
-                                    self.cells = speculator.cells;
-                                    return Ok(());
-                                }
+                        for v in opts.foreach() {
+                            let value = v;
+                            // Create a copy of the board with which we will speculate the value of this cell.
+                            let mut speculator = *self;
+                            speculator.set(candidate_rdx, candidate_cdx, Cell::Value(value))?;
+                            // Try to recursively solve the board.
+                            if speculator.solve().is_ok() {
+                                self.cells = speculator.cells;
+                                return Ok(());
                             }
-                            value += 1;
-                            shifter >>= 1;
                         }
                         return Err("All options lead to failure!".to_string());
                     }
@@ -346,301 +347,4 @@ impl Board {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ANY: Cell = Cell::Options(ALL);
-
-    // Allow for shorter-hand test literals.
-    fn v(x: u8) -> Cell {
-        Cell::Value(x)
-    }
-
-    fn assert_cell(lhs: &Cell, rhs: &Cell) {
-        match (lhs, rhs) {
-            (Cell::Value(lhs_value), Cell::Value(rhs_value)) => {
-                // Values should match.
-                assert_eq!(lhs_value, rhs_value);
-            }
-            (Cell::Value(lhs_value), Cell::Options(rhs_opts)) => {
-                // Options should contain the eventual Value
-                assert_ne!(rhs_opts & 1 << (lhs_value - 1), 0);
-            }
-            (Cell::Options(lhs_opts), Cell::Value(rhs_value)) => {
-                // Options should contain the eventual Value
-                assert_ne!(lhs_opts & 1 << (rhs_value - 1), 0);
-            }
-            (Cell::Options(lhs_opts), Cell::Options(rhs_opts)) => {
-                // Options should have some commonality.
-                assert_ne!(rhs_opts & lhs_opts, 0);
-            }
-        }
-    }
-
-    fn assert_board(lhs: Board, rhs: Board) {
-        for ridx in 0..9 {
-            for cidx in 0..9 {
-                let lhs_cell = lhs.cells[ridx][cidx];
-                let rhs_cell = rhs.cells[ridx][cidx];
-
-                assert_cell(&lhs_cell, &rhs_cell);
-            }
-        }
-    }
-
-    #[test]
-    fn check_equality() {
-        // Programatically define a board with the diagonal
-        // set to their row/col index (1-based)
-        let as_code = {
-            let mut b = Board {
-                cells: [[ANY; 9]; 9],
-            };
-            for diag in 0..9 {
-                b.set(diag, diag, Cell::Value((diag + 1) as u8))
-                    .expect("unexpected error setting up test");
-            }
-            b
-        };
-        as_code.check().expect("Failed to validate board.");
-
-        // Define the same as above as a literal.
-        let as_literal = Board {
-            cells: [
-                [v(1), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [ANY, v(2), ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [ANY, ANY, v(3), ANY, ANY, ANY, ANY, ANY, ANY],
-                [ANY, ANY, ANY, v(4), ANY, ANY, ANY, ANY, ANY],
-                [ANY, ANY, ANY, ANY, v(5), ANY, ANY, ANY, ANY],
-                [ANY, ANY, ANY, ANY, ANY, v(6), ANY, ANY, ANY],
-                [ANY, ANY, ANY, ANY, ANY, ANY, v(7), ANY, ANY],
-                [ANY, ANY, ANY, ANY, ANY, ANY, ANY, v(8), ANY],
-                [ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY, v(9)],
-            ],
-        };
-        as_literal.check().expect("Failed to validate board.");
-        assert_eq!(as_code, as_literal);
-
-        // If we leave things as ANY everywhere, the comparison should fail.
-        let b = Board {
-            cells: [[ANY; 9]; 9],
-        };
-        assert_ne!(b, as_literal);
-    }
-
-    #[test]
-    fn check_iterators() {
-        let b = Board {
-            cells: [
-                [ANY, v(4), ANY, v(7), ANY, v(1), ANY, ANY, v(3)],
-                [v(1), v(3), ANY, ANY, ANY, ANY, ANY, v(4), ANY],
-                [v(8), ANY, ANY, ANY, ANY, ANY, v(9), v(5), ANY],
-                [ANY, v(8), ANY, v(3), ANY, v(2), ANY, ANY, v(5)],
-                [ANY, ANY, ANY, ANY, v(8), ANY, ANY, ANY, ANY],
-                [v(9), ANY, ANY, v(5), ANY, v(6), ANY, v(3), ANY],
-                [ANY, v(7), v(1), ANY, ANY, ANY, ANY, ANY, v(9)],
-                [ANY, v(9), ANY, ANY, ANY, ANY, ANY, v(2), v(4)],
-                [v(3), ANY, ANY, v(4), ANY, v(8), ANY, v(7), ANY],
-            ],
-        };
-
-        // Check row iterator
-        for ridx in 0..9 {
-            let mut cidx = 0;
-            for got in b.row(ridx) {
-                let want = b.cells[ridx][cidx];
-                assert_eq!(
-                    got, want,
-                    "Saw a mismatch at ({}, {}) = {:#?}, wanted {:#?}",
-                    ridx, cidx, got, want
-                );
-                cidx = cidx + 1;
-            }
-        }
-
-        // Check col iterator
-        for cidx in 0..9 {
-            let mut ridx = 0;
-            for got in b.col(cidx) {
-                let want = b.cells[ridx][cidx];
-                assert_eq!(
-                    got, want,
-                    "Saw a mismatch at ({}, {}) = {:#?}, wanted {:#?}",
-                    ridx, cidx, got, want
-                );
-                ridx = ridx + 1;
-            }
-        }
-
-        // Check subsquare iterator
-        for ss_cidx in 0..3 {
-            for ss_ridx in 0..3 {
-                let mut idx = 0;
-                for got in b.subsquare(ss_ridx, ss_cidx) {
-                    let want = b.cells[ss_ridx * 3 + idx / 3][ss_cidx * 3 + idx % 3];
-                    assert_eq!(
-                        got, want,
-                        "Saw a mismatch at ({}, {}) offset {} = {:#?}, wanted {:#?}",
-                        ss_ridx, ss_cidx, idx, got, want
-                    );
-                    idx = idx + 1;
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn check_solve_fails() {
-        let mut input = Board {
-            cells: [
-                [v(1), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [ANY, v(9), v(8), v(7), v(6), v(5), v(4), v(3), v(2)],
-                [v(2), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [v(3), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [v(4), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [v(5), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [v(6), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [v(7), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-                [v(8), ANY, ANY, ANY, ANY, ANY, ANY, ANY, ANY],
-            ],
-        };
-        input.check().expect("Failed to validate board.");
-
-        // This should close in a single pass of the solver.
-        match input.solve_one() {
-            Ok(_) => {
-                panic!("Expected failure solving board, but got: {:#?}", input)
-            }
-            _ => {}
-        }
-    }
-
-    #[test]
-    fn check_solve_super_easy() {
-        let mut input = Board {
-            cells: [
-                [ANY, v(4), v(9), v(7), v(5), v(1), v(8), v(6), v(3)],
-                [v(1), ANY, v(5), v(8), v(6), v(9), v(7), v(4), v(2)],
-                [v(8), v(6), ANY, v(2), v(4), v(3), v(9), v(5), v(1)],
-                [v(7), v(8), v(6), ANY, v(1), v(2), v(4), v(9), v(5)],
-                [v(5), v(2), v(3), v(9), ANY, v(4), v(6), v(1), v(7)],
-                [v(9), v(1), v(4), v(5), v(7), ANY, v(2), v(3), v(8)],
-                [v(4), v(7), v(1), v(6), v(2), v(5), ANY, v(8), v(9)],
-                [v(6), v(9), v(8), v(1), v(3), v(7), v(5), ANY, v(4)],
-                [v(3), v(5), v(2), v(4), v(9), v(8), v(1), v(7), ANY],
-            ],
-        };
-        input.check().expect("Failed to validate board.");
-
-        // This should close in a single pass of the solver.
-        let (options, changed) = input.solve_one().expect("error during solve_one");
-        assert_eq!(changed, true);
-        assert_eq!(options, 0);
-
-        let solution = Board {
-            cells: [
-                [v(2), v(4), v(9), v(7), v(5), v(1), v(8), v(6), v(3)],
-                [v(1), v(3), v(5), v(8), v(6), v(9), v(7), v(4), v(2)],
-                [v(8), v(6), v(7), v(2), v(4), v(3), v(9), v(5), v(1)],
-                [v(7), v(8), v(6), v(3), v(1), v(2), v(4), v(9), v(5)],
-                [v(5), v(2), v(3), v(9), v(8), v(4), v(6), v(1), v(7)],
-                [v(9), v(1), v(4), v(5), v(7), v(6), v(2), v(3), v(8)],
-                [v(4), v(7), v(1), v(6), v(2), v(5), v(3), v(8), v(9)],
-                [v(6), v(9), v(8), v(1), v(3), v(7), v(5), v(2), v(4)],
-                [v(3), v(5), v(2), v(4), v(9), v(8), v(1), v(7), v(6)],
-            ],
-        };
-        solution.check().expect("Failed to validate board.");
-
-        assert_eq!(input, solution);
-    }
-
-    #[test]
-    fn check_solve_super_hard() {
-        let mut input = Board {
-            cells: [
-                [ANY, v(4), ANY, v(7), ANY, v(1), ANY, ANY, v(3)],
-                [v(1), v(3), ANY, ANY, ANY, ANY, ANY, v(4), ANY],
-                [v(8), ANY, ANY, ANY, ANY, ANY, v(9), v(5), ANY],
-                [ANY, v(8), ANY, v(3), ANY, v(2), ANY, ANY, v(5)],
-                [ANY, ANY, ANY, ANY, v(8), ANY, ANY, ANY, ANY],
-                [v(9), ANY, ANY, v(5), ANY, v(6), ANY, v(3), ANY],
-                [ANY, v(7), v(1), ANY, ANY, ANY, ANY, ANY, v(9)],
-                [ANY, v(9), ANY, ANY, ANY, ANY, ANY, v(2), v(4)],
-                [v(3), ANY, ANY, v(4), ANY, v(8), ANY, v(7), ANY],
-            ],
-        };
-        input.check().expect("Failed to validate board.");
-
-        let solution = Board {
-            cells: [
-                [v(2), v(4), v(9), v(7), v(5), v(1), v(8), v(6), v(3)],
-                [v(1), v(3), v(5), v(8), v(6), v(9), v(7), v(4), v(2)],
-                [v(8), v(6), v(7), v(2), v(4), v(3), v(9), v(5), v(1)],
-                [v(7), v(8), v(6), v(3), v(1), v(2), v(4), v(9), v(5)],
-                [v(5), v(2), v(3), v(9), v(8), v(4), v(6), v(1), v(7)],
-                [v(9), v(1), v(4), v(5), v(7), v(6), v(2), v(3), v(8)],
-                [v(4), v(7), v(1), v(6), v(2), v(5), v(3), v(8), v(9)],
-                [v(6), v(9), v(8), v(1), v(3), v(7), v(5), v(2), v(4)],
-                [v(3), v(5), v(2), v(4), v(9), v(8), v(1), v(7), v(6)],
-            ],
-        };
-        solution.check().expect("Failed to validate board.");
-
-        // Run the solver a single iteration
-        input.solve_one().expect("error finding solution");
-        // These test the paths thru assert_board:
-        assert_board(input, input);
-        assert_board(input, solution);
-        assert_board(solution, input);
-
-        // Run the solver to completion.
-        input.check().expect("Failed to validate board.");
-        input.solve().expect("error finding solution");
-
-        assert_board(input, solution);
-        assert_eq!(input, solution);
-    }
-
-    #[test]
-    fn check_solve_hardest() {
-        let solution = Board {
-            cells: [
-                [v(1), v(4), v(5), v(3), v(2), v(7), v(6), v(9), v(8)],
-                [v(8), v(3), v(9), v(6), v(5), v(4), v(1), v(2), v(7)],
-                [v(6), v(7), v(2), v(9), v(1), v(8), v(5), v(4), v(3)],
-                [v(4), v(9), v(6), v(1), v(8), v(5), v(3), v(7), v(2)],
-                [v(2), v(1), v(8), v(4), v(7), v(3), v(9), v(5), v(6)],
-                [v(7), v(5), v(3), v(2), v(9), v(6), v(4), v(8), v(1)],
-                [v(3), v(6), v(7), v(5), v(4), v(2), v(8), v(1), v(9)],
-                [v(9), v(8), v(4), v(7), v(6), v(1), v(2), v(3), v(5)],
-                [v(5), v(2), v(1), v(8), v(3), v(9), v(7), v(6), v(4)],
-            ],
-        };
-        solution.check().expect("Failed to validate board.");
-
-        // This is from:
-        // https://punemirror.indiatimes.com/pune/cover-story/worlds-toughest-sudoku-is-here-can-you-crack-it/articleshow/32299679.cms
-        let mut input = Board {
-            cells: [
-                [ANY, ANY, v(5), v(3), ANY, ANY, ANY, ANY, ANY],
-                [v(8), ANY, ANY, ANY, ANY, ANY, ANY, v(2), ANY],
-                [ANY, v(7), ANY, ANY, v(1), ANY, v(5), ANY, ANY],
-                [v(4), ANY, ANY, ANY, ANY, v(5), v(3), ANY, ANY],
-                [ANY, v(1), ANY, ANY, v(7), ANY, ANY, ANY, v(6)],
-                [ANY, ANY, v(3), v(2), ANY, ANY, ANY, v(8), ANY],
-                [ANY, v(6), ANY, v(5), ANY, ANY, ANY, ANY, v(9)],
-                [ANY, ANY, v(4), ANY, ANY, ANY, ANY, v(3), ANY],
-                [ANY, ANY, ANY, ANY, ANY, v(9), v(7), ANY, ANY],
-            ],
-        };
-        input.check().expect("Failed to validate board.");
-        println!("input: {:#?}", input);
-
-        // Run the solver.
-        input.solve().expect("error finding solution");
-
-        assert_board(input, solution);
-        assert_eq!(input, solution);
-    }
-}
+mod tests;
