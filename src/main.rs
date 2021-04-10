@@ -1,21 +1,14 @@
 mod game;
 
-fn main() {
-    let mut input = game::Board::new([
-        [0, 0, 5, 3, 0, 0, 0, 0, 0],
-        [8, 0, 0, 0, 0, 0, 0, 2, 0],
-        [0, 7, 0, 0, 1, 0, 5, 0, 0],
-        [4, 0, 0, 0, 0, 5, 3, 0, 0],
-        [0, 1, 0, 0, 7, 0, 0, 0, 6],
-        [0, 0, 3, 2, 0, 0, 0, 8, 0],
-        [0, 6, 0, 5, 0, 0, 0, 0, 9],
-        [0, 0, 4, 0, 0, 0, 0, 3, 0],
-        [0, 0, 0, 0, 0, 9, 7, 0, 0],
-    ])
-    .expect("building board literal");
-    input.check().expect("Failed to validate board.");
-    // Run the solver.
-    input.solve().expect("error finding solution");
+use std::io::{self, Read};
 
-    println!("Solution: {:#?}", input);
+fn main() {
+    let mut buf = String::new();
+    io::stdin()
+        .read_to_string(&mut buf)
+        .expect("failed to read stdin");
+    let mut board = game::Board::parse(buf).expect("failed to parse board");
+    board.check().expect("the provided board is invalid");
+    board.solve().expect("unable to solve board");
+    println!("Solution: {:#?}", board);
 }
