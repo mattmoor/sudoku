@@ -185,7 +185,7 @@ impl Board {
             for j in 0..9 {
                 let c = values[i][j];
                 if c > 9 {
-                    panic!("Invalid value ({}, {}) = {}", i, j, c);
+                    return Err(format!("Invalid value ({}, {}) = {}", i, j, c));
                 }
                 if c == 0 {
                     continue; // 0 is used for unspecified, so leave "all" options.
