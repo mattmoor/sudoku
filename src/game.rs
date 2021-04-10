@@ -22,6 +22,7 @@ impl fmt::Debug for Cell {
 pub struct Board {
     cells: [[Cell; 9]; 9],
 }
+
 impl fmt::Debug for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("\n")?;
@@ -40,6 +41,7 @@ mod views {
         row_index: usize,
         col_index: usize,
     }
+
     impl Row<'_> {
         pub fn new(b: &super::Board, idx: usize) -> Row {
             Row {
@@ -49,6 +51,7 @@ mod views {
             }
         }
     }
+
     impl<'a> Iterator for Row<'a> {
         type Item = super::Cell;
 
@@ -70,6 +73,7 @@ mod views {
         col_index: usize,
         row_index: usize,
     }
+
     impl Column<'_> {
         pub fn new(b: &super::Board, idx: usize) -> Column {
             Column {
@@ -79,6 +83,7 @@ mod views {
             }
         }
     }
+
     impl<'a> Iterator for Column<'a> {
         type Item = super::Cell;
 
@@ -101,6 +106,7 @@ mod views {
         base_row: usize,
         index: usize,
     }
+
     impl SubSquare<'_> {
         pub fn new(b: &super::Board, ss_ridx: usize, ss_cidx: usize) -> SubSquare {
             SubSquare {
@@ -111,6 +117,7 @@ mod views {
             }
         }
     }
+
     impl<'a> Iterator for SubSquare<'a> {
         type Item = super::Cell;
 
@@ -195,6 +202,35 @@ impl Board {
         }
 
         Ok(board)
+    }
+
+    pub fn parse(input: String) -> Result<Board, String> {
+        let rows = input.split("\n").collect::<Vec<&str>>();
+        if rows.len() != 9 {
+            return Err(format!("input has {} rows, wanted 9", rows.len()));
+        }
+
+        let mut raw_board = [[0; 9]; 9];
+        let mut i = 0;
+        for row in rows {
+            if row.len() != 9 {
+                return Err(format!("row {} has {} columns, wanted 9", row, row.len()));
+            }
+            for (j, c) in row.chars().enumerate() {
+                match c {
+                    // Accept space or 0 as a blank.
+                    '0' | ' ' => continue,
+                    // Digits become a real value.
+                    '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+                        raw_board[i][j] = c as usize - '0' as usize;
+                    }
+                    // Anything else is an error.
+                    _ => return Err(format!("Found invalid input character: {}", c)),
+                }
+            }
+            i += 1;
+        }
+        return Board::new(raw_board);
     }
 
     fn set(&mut self, row: usize, col: usize, value: Cell) -> Result<(), String> {
