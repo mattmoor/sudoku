@@ -311,8 +311,7 @@ impl Board {
         for ridx in 0..9 {
             for cidx in 0..9 {
                 if let Cell::Options(opts) = self.cells[ridx][cidx] {
-                    for v in opts.foreach() {
-                        let value = v;
+                    for value in opts.foreach() {
                         if views::frequency(self.row(ridx), value) == 1
                             || views::frequency(self.col(cidx), value) == 1
                             || views::frequency(self.subsquare(ridx / 3, cidx / 3), value) == 1
@@ -362,8 +361,7 @@ impl Board {
                         }
                     }
                     if let Cell::Options(opts) = self.cells[candidate_rdx][candidate_cdx] {
-                        for v in opts.foreach() {
-                            let value = v;
+                        for value in opts.foreach() {
                             // Create a copy of the board with which we will speculate the value of this cell.
                             let mut speculator = *self;
                             speculator.set(candidate_rdx, candidate_cdx, Cell::Value(value))?;
