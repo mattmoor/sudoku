@@ -61,6 +61,7 @@ const GOOD_BOARD_ZEROS: &str = "\
 000009700";
 
 // We use a zero because the "\ seems to trim leading whitespace.
+// This also checks that trailing newlines are harmless.
 const GOOD_BOARD_SPACES: &str = "\
 0 53     
 8      2 
@@ -70,7 +71,9 @@ const GOOD_BOARD_SPACES: &str = "\
   32   8 
  6 5    9
   4    3 
-     97  ";
+     97  
+
+";
 
 const BAD_BOARD_CHAR: &str = "\
 00a300000

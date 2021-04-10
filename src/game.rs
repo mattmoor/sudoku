@@ -205,7 +205,10 @@ impl Board {
     }
 
     pub fn parse(input: String) -> Result<Board, String> {
-        let rows = input.split("\n").collect::<Vec<&str>>();
+        let rows = input
+            .trim_end_matches("\n")
+            .split("\n")
+            .collect::<Vec<&str>>();
         if rows.len() != 9 {
             return Err(format!("input has {} rows, wanted 9", rows.len()));
         }
