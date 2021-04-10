@@ -33,6 +33,23 @@ fn assert_board(lhs: Board, rhs: Board) {
 }
 
 #[test]
+fn check_bad_board() {
+    if let Ok(b) = Board::new([
+        [10, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 2, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 3, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 4, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 5, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 6, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 7, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 8, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 9],
+    ]) {
+        panic!("wanted error due to bad value: 10, got: {:#?}", b)
+    }
+}
+
+#[test]
 fn check_equality() {
     // Programatically define a board with the diagonal
     // set to their row/col index (1-based)
